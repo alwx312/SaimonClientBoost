@@ -9,8 +9,8 @@ local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
 local Stats = game:GetService("Stats")
+local Lighting = game:GetService("Lighting")
 local VIM = game:GetService("VirtualInputManager")
-local VirtualUser = game:GetService("VirtualUser")
 
 local lp = Players.LocalPlayer
 local cam = workspace.CurrentCamera
@@ -43,9 +43,14 @@ local function LoadImage(ImageLabel, Url)
 	end)
 end
 
--- MODULES CONFIG
-local P = {"Head", "HumanoidRootPart"}
+-- MODULES CONFIG (Огромный список)
+local P = {"Head", "HumanoidRootPart", "Torso"}
 local M = {
+	{cat = "Combat", name = "Aimbot", settings = {
+		{k = "FOV", t = "slider", min = 20, max = 600, def = 150, step = 5},
+		{k = "Smooth", t = "slider", min = 0.05, max = 1, def = 0.25, step = 0.05},
+		{k = "Part", t = "choice", opts = P, def = "Head"},
+	}},
 	{cat = "Combat", name = "Triggerbot", isCustom = true, settings = {
 		{k = "Delay", t = "slider", min = 0.01, max = 0.5, def = 0.1, step = 0.01},
 		{k = "Distance", t = "slider", min = 5, max = 50, def = 25, step = 1},
@@ -55,18 +60,35 @@ local M = {
 		{k = "Size", t = "slider", min = 2, max = 20, def = 6, step = 1},
 		{k = "Mode", t = "choice", opts = {"Default", "Legit"}, def = "Default"},
 	}},
-	{cat = "Movement", name = "Speed", settings = {{k = "Value", t = "slider", min = 16, max = 120, def = 32, step = 1}}},
-	{cat = "Movement", name = "Flight", settings = {{k = "Speed", t = "slider", min = 10, max = 150, def = 50, step = 1}}},
+	{cat = "Combat", name = "No Recoil"},
+	{cat = "Combat", name = "No Spread"},
+	
+	{cat = "Movement", name = "Speed", settings = {{k = "Value", t = "slider", min = 16, max = 150, def = 32, step = 1}}},
+	{cat = "Movement", name = "Flight", settings = {{k = "Speed", t = "slider", min = 10, max = 200, def = 50, step = 1}}},
+	{cat = "Movement", name = "High Jump", settings = {{k = "Power", t = "slider", min = 50, max = 300, def = 100, step = 5}}},
+	{cat = "Movement", name = "Infinite Jump"},
+	{cat = "Movement", name = "Bunny Hop"},
+	{cat = "Movement", name = "No Clip"},
+	{cat = "Movement", name = "Click TP"},
 	{cat = "Movement", name = "KT Leave (Skybase)", isCustom = true, settings = {
 		{k = "Height", t = "slider", min = 20, max = 150, def = 45, step = 5},
-		{k = "Mode", t = "choice", opts = {"TP", "Flight", "Bypass", "Bypass V3"}, def = "TP"},
+		{k = "Mode", t = "choice", opts = {"TP", "Flight", "Bypass V3"}, def = "TP"},
 		{k = "FallMode", t = "choice", opts = {"None", "AntiFall", "Mace/MC"}, def = "None"},
 	}},
+	
 	{cat = "Visuals", name = "ESP", isCustom = true},
 	{cat = "Visuals", name = "Nametags", isCustom = true},
-	{cat = "Visuals", name = "Watermark", isCustom = true}, -- Добавили Watermark
+	{cat = "Visuals", name = "Watermark", isCustom = true},
+	{cat = "Visuals", name = "FOV Circle"},
+	{cat = "Visuals", name = "Crosshair"},
+	{cat = "Visuals", name = "Full Bright"},
+	{cat = "Visuals", name = "FPS Boost"},
+	{cat = "Visuals", name = "Target HUD"},
+	
+	{cat = "Misc", name = "Anti AFK"},
+	{cat = "Misc", name = "Panic", action = true},
 }
-local CATS = {"Combat", "Movement", "Visuals"}
+local CATS = {"Combat", "Movement", "Visuals", "Misc"}
 
 local Flags, S = {}, {}
 for _, m in ipairs(M) do
@@ -79,6 +101,7 @@ local open = false
 local HitboxData = {}
 local ESPData = {}
 local KTState = { Platform = nil, SavedCF = nil, Active = false, Loop = nil, Highlight = nil, FallLoop = nil }
+local ActiveToggles = {}
 
 -- HELPERS
 local function new(class, props, parent)
@@ -121,10 +144,10 @@ end
 local gui = new("ScreenGui", {Name = guiName, ResetOnSpawn = false, IgnoreGuiInset = true, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 999}, lp:WaitForChild("PlayerGui"))
 local modal = new("TextButton", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", Modal = false, Visible = false}, gui)
 
--- ТЯНКА (в углу экрана)
+-- ТЯНКА (Скрыта по умолчанию)
 local cornerImg = new("ImageLabel", {
 	AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -20, 1, -20), Size = UDim2.fromOffset(100, 100),
-	BackgroundTransparency = 1, Image = "", ImageTransparency = 0.2, ZIndex = 5
+	BackgroundTransparency = 1, Image = "", ImageTransparency = 0.2, ZIndex = 5, Visible = false
 }, gui)
 LoadImage(cornerImg, CAT_URL)
 
@@ -138,50 +161,33 @@ corner(openBtn, 25)
 new("UIStroke", {Color = Color3.fromRGB(0, 0, 0), Thickness = 2}, openBtn)
 MakeDraggable(openBtn)
 
--- ==========================================================
--- ВАТЕРМАРКА (Мобильная версия, интегрирована)
--- ==========================================================
-local wmGui = new("ScreenGui", {Name = "SimonWM", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 998, ZIndexBehavior = Enum.ZIndexBehavior.Sibling}, lp.PlayerGui)
+-- ВАТЕРМАРКА
+local wmGui = new("ScreenGui", {Name = "SimonWM", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 998}, lp.PlayerGui)
 local wmRoot = new("CanvasGroup", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), BackgroundTransparency = 1, GroupTransparency = 1, Visible = false, Parent = wmGui})
 local wmBar = new("Frame", {AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 26), BackgroundColor3 = Color3.fromRGB(14, 14, 18), BackgroundTransparency = 0.35, BorderSizePixel = 0, Parent = wmRoot})
 corner(wmBar, 8)
 new("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = wmBar})
 new("UIPadding", {PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 12), Parent = wmBar})
-
--- Логотип "A"
 local wmLogo = new("Frame", {Size = UDim2.fromOffset(22, 22), BackgroundColor3 = Color3.fromRGB(255,255,255), BackgroundTransparency = 0.8, Parent = wmBar})
 corner(wmLogo, 6)
-local wmLogoText = new("TextLabel", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, Text = "A", Font = Enum.Font.GothamBlack, TextSize = 14, TextColor3 = Color3.fromRGB(255, 255, 255), Parent = wmLogo})
-new("UIGradient", {Color = ColorSequence.new(Color3.fromRGB(150, 90, 255), Color3.fromRGB(70, 200, 255)), Rotation = 45}, wmLogoText)
-
--- Имя
+new("TextLabel", {Size = UDim2.fromScale(1,1), BackgroundTransparency = 1, Text = "A", Font = Enum.Font.GothamBlack, TextSize = 14, TextColor3 = Color3.fromRGB(255, 255, 255), Parent = wmLogo})
 local wmName = new("TextLabel", {BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,1,0), Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.new(1,1,1), Text = "Simon", Parent = wmBar})
 new("UIGradient", {Color = ColorSequence.new(Color3.fromRGB(255,255,255), Color3.fromRGB(200, 185, 255)), Rotation = 90}, wmName)
-
--- FPS
 local wmFps = new("TextLabel", {BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,1,0), Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(232, 235, 248), Text = "60 FPS", Parent = wmBar})
--- Ping
 local wmPing = new("TextLabel", {BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,1,0), Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(232, 235, 248), Text = "0 MS", Parent = wmBar})
--- Time
 local wmTime = new("TextLabel", {BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0,0,1,0), Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = Color3.fromRGB(232, 235, 248), Text = "00:00", Parent = wmBar})
-
 MakeDraggable(wmRoot)
--- ==========================================================
 
 -- ГЛАВНОЕ МЕНЮ
 local main2 = new("CanvasGroup", {
-	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(480, 400),
+	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(500, 420),
 	BackgroundColor3 = Color3.fromRGB(16, 17, 26), BackgroundTransparency = 0.04, GroupTransparency = 1, Visible = false, ZIndex = 10
 }, gui)
 corner(main2, 16)
 local uiScale = new("UIScale", {Scale = 1}, main2)
-
 local function UpdateScale()
 	local vp = cam.ViewportSize
-	-- Keep the whole panel usable on phones without making text microscopic.
-	local scaleX = (vp.X - 16) / 480
-	local scaleY = (vp.Y - 24) / 400
-	uiScale.Scale = math.clamp(math.min(scaleX, scaleY, 1), 0.62, 1)
+	if vp.X < 500 then uiScale.Scale = vp.X / 500 else uiScale.Scale = 1 end
 end
 UpdateScale()
 cam:GetPropertyChangedSignal("ViewportSize"):Connect(UpdateScale)
@@ -192,7 +198,6 @@ corner(bannerFrame, 12)
 local bannerImg = new("ImageLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = "", ScaleType = Enum.ScaleType.Crop}, bannerFrame)
 corner(bannerImg, 12)
 LoadImage(bannerImg, BANNER_URL)
-
 local titleOverlay = new("Frame", {Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.5, ZIndex = 2}, bannerFrame)
 corner(titleOverlay, 12)
 local titleLbl = new("TextLabel", {Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "Саймон Клиент", Font = Enum.Font.GothamBlack, TextSize = 24, TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 3}, titleOverlay)
@@ -201,11 +206,10 @@ new("UIStroke", {Color = Color3.fromRGB(200, 150, 255), Thickness = 2, Transpare
 
 local closeBtn = new("TextButton", {Position = UDim2.new(1, -35, 0, 10), Size = UDim2.fromOffset(25, 25), BackgroundTransparency = 1, Text = "X", Font = FONTB, TextSize = 20, TextColor3 = Color3.fromRGB(255, 80, 80), ZIndex = 10}, bannerFrame)
 closeBtn.MouseButton1Click:Connect(function() _G.SimonSetOpen(false) end)
-
 MakeDraggable(main2, bannerFrame)
 
 -- БОКОВАЯ ПАНЕЛЬ
-local side = new("Frame", {Position = UDim2.fromOffset(0, 90), Size = UDim2.fromOffset(120, 300), BackgroundTransparency = 1, ZIndex = 2}, main2)
+local side = new("Frame", {Position = UDim2.fromOffset(0, 90), Size = UDim2.fromOffset(120, 320), BackgroundTransparency = 1, ZIndex = 2}, main2)
 local curCat = "Combat"
 local catBtns = {}
 local grid, title2, cards = {}, nil, {}
@@ -229,181 +233,85 @@ for i, cat in ipairs(CATS) do
 end
 
 title2 = new("TextLabel", {Position = UDim2.fromOffset(130, 95), Size = UDim2.fromOffset(200, 28), BackgroundTransparency = 1, Text = "Combat", Font = FONTB, TextSize = 18, TextColor3 = Color3.new(1, 1, 1), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2}, main2)
-grid = new("ScrollingFrame", {
-	Position = UDim2.fromOffset(130, 130),
-	Size = UDim2.new(1, -140, 1, -140),
-	BackgroundTransparency = 1,
-	BorderSizePixel = 0,
-	ScrollBarThickness = 3,
-	AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	CanvasSize = UDim2.new(),
-	ScrollingDirection = Enum.ScrollingDirection.Y,
-	ZIndex = 2
-}, main2)
-new("UIListLayout", {
-	SortOrder = Enum.SortOrder.LayoutOrder,
-	Padding = UDim.new(0, 7)
-}, grid)
-new("UIPadding", {
-	PaddingTop = UDim.new(0, 2),
-	PaddingBottom = UDim.new(0, 8),
-	PaddingRight = UDim.new(0, 4)
-}, grid)
+grid = new("ScrollingFrame", {Position = UDim2.fromOffset(130, 130), Size = UDim2.new(1, -140, 1, -140), BackgroundTransparency = 1, ScrollBarThickness = 2, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), ZIndex = 2}, main2)
+new("UIGridLayout", {CellSize = UDim2.new(0.5, -6, 0, 85), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder}, grid)
 
 local function setFlag(name, v)
 	Flags[name] = v
 	local cc = cards[name]
-	if cc then
-		if cc.status then
-			cc.status.Text = v and "ON" or "OFF"
-			cc.status.TextColor3 = v and Color3.fromRGB(150, 255, 180) or DIM
-		end
-		if cc.enableBtn then
-			cc.enableBtn.Text = v and "Disable module" or "Enable module"
-			cc.enableBtn.BackgroundColor3 = v and Color3.fromRGB(48, 105, 78) or Color3.fromRGB(45, 48, 70)
-		end
+	if cc and cc.box ~= cc.knob then
+		tween(cc.box, 0.2, {BackgroundColor3 = v and ACC or Color3.fromRGB(50, 53, 90)})
+		tween(cc.knob, 0.2, {Position = UDim2.new(0, v and 18 or 2, 0.5, 0)})
 	end
-
+	-- Синхронизация с плавающей кнопкой
+	if ActiveToggles[name] then
+		local fb = ActiveToggles[name]
+		if v then tween(fb, 0.2, {BackgroundColor3 = Color3.fromRGB(40, 100, 60)}) 
+		else tween(fb, 0.2, {BackgroundColor3 = Color3.fromRGB(30, 32, 52)}) end
+	end
 	if name == "Watermark" then
-		if v then
-			wmRoot.Visible = true
-			wmRoot.GroupTransparency = 1
-			tween(wmRoot, 0.25, {GroupTransparency = 0})
-		else
-			wmRoot.Visible = false
-		end
+		if v then wmRoot.Visible = true; wmRoot.GroupTransparency = 1; tween(wmRoot, 0.5, {GroupTransparency = 0}) 
+		else wmRoot.Visible = false end
 	end
 end
 
-for order, m in ipairs(M) do
-	local card = new("Frame", {
-		Name = "Module_" .. m.name:gsub("%W", ""),
-		Size = UDim2.new(1, -2, 0, 48),
-		BackgroundColor3 = Color3.fromRGB(24, 26, 40),
-		BorderSizePixel = 0,
-		ClipsDescendants = true,
-		LayoutOrder = order,
-		ZIndex = 2
-	}, grid)
-	corner(card, 9)
-	new("UIStroke", {
-		Color = Color3.fromRGB(255, 255, 255),
-		Transparency = 0.92,
-		Thickness = 1
-	}, card)
-
-	local nameLabel = new("TextLabel", {
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -105, 0, 46),
-		BackgroundTransparency = 1,
-		Text = m.name,
-		Font = FONTB,
-		TextSize = 12,
-		TextColor3 = m.isCustom and GOLD_COLOR or TXT,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 3
-	}, card)
-
-	local status = new("TextLabel", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -43, 0, 23),
-		Size = UDim2.fromOffset(32, 20),
-		BackgroundTransparency = 1,
-		Text = "OFF",
-		Font = FONTB,
-		TextSize = 10,
-		TextColor3 = DIM,
-		ZIndex = 3
-	}, card)
-
-	local plus = new("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -7, 0, 23),
-		Size = UDim2.fromOffset(30, 30),
-		BackgroundColor3 = Color3.fromRGB(42, 45, 68),
-		AutoButtonColor = true,
-		Text = "+",
-		Font = FONTB,
-		TextSize = 21,
-		TextColor3 = TXT,
-		ZIndex = 4
-	}, card)
-	corner(plus, 8)
-
-	local details = new("Frame", {
-		Position = UDim2.fromOffset(8, 46),
-		Size = UDim2.new(1, -16, 0, 40),
-		BackgroundTransparency = 1,
-		Visible = false,
-		ZIndex = 3
-	}, card)
-
-	local enableBtn = new("TextButton", {
-		Position = UDim2.fromOffset(0, 2),
-		Size = UDim2.new(1, - (m.settings and 76 or 0), 0, 32),
-		BackgroundColor3 = Color3.fromRGB(45, 48, 70),
-		AutoButtonColor = true,
-		Text = "Enable module",
-		Font = FONTB,
-		TextSize = 11,
-		TextColor3 = TXT,
-		ZIndex = 4
-	}, details)
-	corner(enableBtn, 7)
-
-	local settingsBtn
-	if m.settings and #m.settings > 0 then
-		settingsBtn = new("TextButton", {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, 2),
-			Size = UDim2.fromOffset(68, 32),
-			BackgroundColor3 = Color3.fromRGB(42, 45, 68),
-			AutoButtonColor = true,
-			Text = "Settings",
-			Font = FONTB,
-			TextSize = 10,
-			TextColor3 = TXT,
-			ZIndex = 4
-		}, details)
-		corner(settingsBtn, 7)
-	end
-
-	cards[m.name] = {
-		box = nil,
-		knob = nil,
-		status = status,
-		enableBtn = enableBtn,
-		cat = m.cat,
-		frame = card,
-		details = details,
-		plus = plus,
-		expanded = false
-	}
-
-	local function expandModule()
-		local cc = cards[m.name]
-		cc.expanded = not cc.expanded
-		details.Visible = cc.expanded
-		plus.Text = cc.expanded and "−" or "+"
-		card.Size = UDim2.new(1, -2, 0, cc.expanded and 88 or 48)
-	end
-
-	plus.Activated:Connect(expandModule)
-	enableBtn.Activated:Connect(function()
-		setFlag(m.name, not Flags[m.name])
-	end)
-
-	if settingsBtn then
-		settingsBtn.Activated:Connect(function()
-			openSettings(m, card, card)
+for _, m in ipairs(M) do
+	local card = new("TextButton", {BackgroundColor3 = Color3.fromRGB(24, 26, 40), AutoButtonColor = false, Text = "", ZIndex = 2}, grid)
+	corner(card, 8)
+	new("UIStroke", {Color = Color3.new(1, 1, 1), Transparency = 0.93}, card)
+	local textCol = m.isCustom and GOLD_COLOR or Color3.new(1, 1, 1)
+	new("TextLabel", {Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 0, 16), BackgroundTransparency = 1, Text = m.name, Font = FONTB, TextSize = 12, TextColor3 = textCol, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, card)
+	
+	local toggleBox, knob
+	if not m.action and not m.noToggle then
+		toggleBox = new("Frame", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 8), Size = UDim2.fromOffset(30, 16), BackgroundColor3 = Color3.fromRGB(50, 53, 90)}, card)
+		corner(toggleBox, 8)
+		knob = new("Frame", {AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.new(1, 1, 1)}, toggleBox)
+		corner(knob, 6)
+		cards[m.name] = {box = toggleBox, knob = knob, cat = m.cat, frame = card}
+		
+		-- КНОПКА (+)
+		local floatBtn = new("TextButton", {Position = UDim2.fromOffset(8, 45), Size = UDim2.fromOffset(40, 22), BackgroundColor3 = Color3.fromRGB(35, 37, 55), Text = "+", Font = FONTB, TextSize = 14, TextColor3 = GOLD_COLOR}, card)
+		corner(floatBtn, 4)
+		
+		floatBtn.MouseButton1Click:Connect(function()
+			if not ActiveToggles[m.name] then
+				-- Создаем плавающую кнопку
+				local fBtn = new("TextButton", {Size = UDim2.fromOffset(85, 35), Position = UDim2.fromOffset(100, 100), BackgroundColor3 = Color3.fromRGB(30, 32, 52), Text = m.name, Font = FONTB, TextSize = 11, TextColor3 = Color3.new(1, 1, 1), ZIndex = 90}, gui)
+				corner(fBtn, 6)
+				new("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1}, fBtn)
+				MakeDraggable(fBtn)
+				ActiveToggles[m.name] = fBtn
+				floatBtn.Text = "-"
+				floatBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+				fBtn.MouseButton1Click:Connect(function() setFlag(m.name, not Flags[m.name]) end)
+			else
+				-- Удаляем плавающую кнопку
+				ActiveToggles[m.name]:Destroy()
+				ActiveToggles[m.name] = nil
+				floatBtn.Text = "+"
+				floatBtn.TextColor3 = GOLD_COLOR
+			end
 		end)
+	else
+		cards[m.name] = {box = card, knob = card, cat = m.cat, frame = card}
 	end
-
-	-- Allow tapping the module title to expand its controls on touch devices.
-	nameLabel.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			expandModule()
+	
+	if m.settings then
+		local d = new("TextButton", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 45), Size = UDim2.fromOffset(26, 22), BackgroundColor3 = Color3.fromRGB(35, 37, 55), Text = "...", Font = FONTB, TextSize = 12, TextColor3 = DIM}, card)
+		corner(d, 4)
+		d.MouseButton1Click:Connect(function() openSettings(m, card, card) end)
+	end
+	
+	card.MouseButton1Click:Connect(function()
+		if m.noToggle then return end
+		if m.action then
+			if m.name == "Panic" then
+				for _, mm in ipairs(M) do if not mm.action then setFlag(mm.name, false) end end
+				_G.SimonSetOpen(false)
+			end
+		else
+			setFlag(m.name, not Flags[m.name])
 		end
 	end)
 end
@@ -413,6 +321,7 @@ showCat()
 _G.SimonSetOpen = function(v)
 	open = v
 	modal.Visible, modal.Modal = v, v
+	cornerImg.Visible = v -- Кот только когда открыто меню!
 	if v then main2.Visible = true end
 	tween(main2, 0.3, {GroupTransparency = v and 0 or 1})
 	if not v then task.delay(0.3, function() main2.Visible = false end) end
@@ -421,7 +330,7 @@ openBtn.MouseButton1Click:Connect(function() _G.SimonSetOpen(not open) end)
 UIS.InputBegan:Connect(function(input, gpe) if not gpe and (input.KeyCode == Enum.KeyCode.PageDown or input.KeyCode == Enum.KeyCode.RightShift) then _G.SimonSetOpen(not open) end end)
 
 -- НАСТРОЙКИ
-local popup = new("Frame", {Size = UDim2.fromOffset(200, 100), BackgroundColor3 = PANEL, BackgroundTransparency = 0.05, Visible = false, AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 105}, gui)
+local popup = new("Frame", {Size = UDim2.fromOffset(220, 100), BackgroundColor3 = PANEL, BackgroundTransparency = 0.05, Visible = false, AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 105}, gui)
 corner(popup, 12)
 new("UIStroke", {Color = ACC, Transparency = 0.6}, popup)
 new("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)}, popup)
@@ -456,12 +365,7 @@ function openSettings(m, col, row)
 		end
 	end
 	local vp = cam.ViewportSize
-	local popupWidth = math.min(200, math.max(160, vp.X - 20))
-	popup.Size = UDim2.fromOffset(popupWidth, 100)
-	popup.Position = UDim2.fromOffset(
-		math.clamp(col.AbsolutePosition.X + col.AbsoluteSize.X + 10, 10, math.max(10, vp.X - popupWidth - 10)),
-		math.clamp(row.AbsolutePosition.Y, 10, math.max(10, vp.Y - 180))
-	)
+	popup.Position = UDim2.fromOffset(math.clamp(col.AbsolutePosition.X + col.AbsoluteSize.X + 10, 10, vp.X - 230), math.clamp(row.AbsolutePosition.Y, 10, vp.Y - 180))
 	popup.Visible = true
 end
 UIS.InputChanged:Connect(function(i) if dragFn and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then dragFn(i.Position) end end)
@@ -537,7 +441,6 @@ local function UpdateVisuals()
 			if hrp and head and hum and hum.Health > 0 then
 				if not ESPData[plr] then ESPData[plr] = {} end
 				
-				-- ESP
 				if Flags["ESP"] then
 					if not ESPData[plr].ESP or not ESPData[plr].ESP.Parent then
 						ESPData[plr].ESP = new("Highlight", {FillColor = GOLD_COLOR, OutlineColor = Color3.new(1, 1, 1), FillTransparency = 0.6, OutlineTransparency = 0, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop, Parent = char})
@@ -546,7 +449,6 @@ local function UpdateVisuals()
 					if ESPData[plr].ESP then ESPData[plr].ESP:Destroy(); ESPData[plr].ESP = nil end
 				end
 
-				-- Nametags
 				if Flags["Nametags"] then
 					if not ESPData[plr].Tag or not ESPData[plr].Tag.Parent then
 						local bg = new("BillboardGui", {Name = "SimonTags", Adornee = head, AlwaysOnTop = true, Size = UDim2.fromOffset(200, 30), StudsOffset = Vector3.new(0, 2.8, 0), Parent = head})
@@ -576,26 +478,21 @@ Players.PlayerRemoving:Connect(function(plr)
 	end
 end)
 
------------------------------------------------------------------- ОБНОВЛЕНИЕ ВАТЕРМАРКИ
-local frames, acc = 0, 0
-RunService.RenderStepped:Connect(function(dt)
-	if not Flags["Watermark"] then return end
-	
-	frames += 1
-	acc += dt
-	if acc >= 0.5 then
-		local fps = math.floor(frames / acc + 0.5)
-		frames, acc = 0, 0
-		local ping = 0
-		pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5) end)
-		
-		wmFps.Text = tostring(fps) .. " FPS"
-		wmPing.Text = tostring(ping) .. " MS"
-		
-		local ts = os.time() + 5 * 3600
-		wmTime.Text = os.date("!%H:%M", ts)
-	end
-end)
+-- FOV CIRCLE & CROSSHAIR (Drawing API для оптимизации)
+local fovCircle = Drawing.new("Circle")
+fovCircle.Thickness = 1
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Filled = false
+fovCircle.Visible = false
+
+local crossLines = {}
+for i = 1, 4 do
+	local line = Drawing.new("Line")
+	line.Thickness = 1.5
+	line.Color = Color3.fromRGB(255, 255, 255)
+	line.Visible = false
+	table.insert(crossLines, line)
+end
 
 ------------------------------------------------------------------ MAIN LOOP
 local lastShot = 0
@@ -605,6 +502,56 @@ RunService.RenderStepped:Connect(function(dt)
 	local mouse = UIS:GetMouseLocation()
 	
 	UpdateVisuals()
+
+	-- FOV CIRCLE
+	if Flags["FOV Circle"] then
+		fovCircle.Position = mouse
+		fovCircle.Radius = S.Aimbot.FOV
+		fovCircle.Visible = true
+	else
+		fovCircle.Visible = false
+	end
+
+	-- CROSSHAIR
+	if Flags["Crosshair"] then
+		local center = cam.ViewportSize / 2
+		local size = 8
+		crossLines[1].From = center - Vector2.new(size, 0); crossLines[1].To = center - Vector2.new(3, 0)
+		crossLines[2].From = center + Vector2.new(3, 0); crossLines[2].To = center + Vector2.new(size, 0)
+		crossLines[3].From = center - Vector2.new(0, size); crossLines[3].To = center - Vector2.new(0, 3)
+		crossLines[4].From = center + Vector2.new(0, 3); crossLines[4].To = center + Vector2.new(0, size)
+		for _, l in ipairs(crossLines) do l.Visible = true end
+	else
+		for _, l in ipairs(crossLines) do l.Visible = false end
+	end
+
+	-- ВАТЕРМАРКА
+	if Flags["Watermark"] then
+		wmFps.Text = tostring(math.floor(1/dt)) .. " FPS"
+		local ping = 0; pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue()) end)
+		wmPing.Text = tostring(ping) .. " MS"
+		wmTime.Text = os.date("!%H:%M", os.time() + 5 * 3600)
+	end
+
+	-- AIMBOT
+	if Flags["Aimbot"] and not open then
+		local closest, bestDist = nil, S.Aimbot.FOV
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= lp and p.Character then
+				local targetPart = p.Character:FindFirstChild(S.Aimbot.Part)
+				if targetPart then
+					local sp, onScreen = cam:WorldToViewportPoint(targetPart.Position)
+					if onScreen then
+						local dist = (Vector2.new(sp.X, sp.Y) - mouse).Magnitude
+						if dist < bestDist then bestDist = dist; closest = targetPart end
+					end
+				end
+			end
+		end
+		if closest then
+			cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, closest.Position), S.Aimbot.Smooth)
+		end
+	end
 
 	-- ТРИГГЕР
 	if Flags.Triggerbot and not open and os.clock() - lastShot > S.Triggerbot.Delay then
@@ -624,10 +571,7 @@ RunService.RenderStepped:Connect(function(dt)
 		if closestPlr then
 			lastShot = os.clock()
 			local pr = closestPlr.Character.HumanoidRootPart
-			local sp, on = cam:WorldToViewportPoint(pr.Position)
-			if on and type(mousemoverel) == "function" then mousemoverel(sp.X - mouse.X, sp.Y - mouse.Y) end
 			if S.Triggerbot.SmartCrits and hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping then hum.Jump = true end
-			
 			task.spawn(function()
 				local tool = c and c:FindFirstChildOfClass("Tool")
 				if tool then pcall(function() tool:Activate() end); local handle = tool:FindFirstChild("Handle"); if handle then pcall(function() firetouchinterest(handle, pr, 0); firetouchinterest(handle, pr, 1) end) end end
@@ -666,6 +610,10 @@ RunService.RenderStepped:Connect(function(dt)
 	-- ДВИЖЕНИЕ
 	if hum and root then
 		if Flags.Speed then hum.WalkSpeed = S.Speed.Value end
+		if Flags["High Jump"] then hum.UseJumpPower = true; hum.JumpPower = S["High Jump"].Power end
+		if Flags["Infinite Jump"] and UIS:IsKeyDown(Enum.KeyCode.Space) then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+		if Flags["Bunny Hop"] and UIS:IsKeyDown(Enum.KeyCode.Space) then hum.Jump = true end
+		
 		if Flags.Flight then
 			local bv = root:FindFirstChild("SimonFly")
 			if not bv then bv = new("BodyVelocity", {Name = "SimonFly", MaxForce = Vector3.new(math.huge, math.huge, math.huge), Parent = root}) end
@@ -677,6 +625,24 @@ RunService.RenderStepped:Connect(function(dt)
 		else
 			local bv = root:FindFirstChild("SimonFly")
 			if bv then bv:Destroy() end
+		end
+		
+		if Flags["No Clip"] and c then
+			for _, d in ipairs(c:GetDescendants()) do if d:IsA("BasePart") then d.CanCollide = false end end
+		end
+	end
+
+	-- FULLBRIGHT & FPS BOOST
+	if Flags["Full Bright"] then
+		Lighting.Brightness = 2
+		Lighting.ClockTime = 14
+		Lighting.GlobalShadows = false
+		Lighting.Ambient = Color3.fromRGB(150, 150, 150)
+	end
+	if Flags["FPS Boost"] then
+		Lighting.GlobalShadows = false
+		for _, v in ipairs(workspace:GetDescendants()) do
+			if v:IsA("ParticleEmitter") or v:IsA("Smoke") or v:IsA("Fire") then v.Enabled = false end
 		end
 	end
 end)
